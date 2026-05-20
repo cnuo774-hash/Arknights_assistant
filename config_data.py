@@ -9,7 +9,6 @@ persist_directory="./chroma_db"
 #Splitter
 chunk_size=1000
 chunk_overlap=100
-separators=['\n\n', '\n', ' ', '','.','!','?','。','！','？']
 max_split_len=200
 
 #
