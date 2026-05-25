@@ -10,6 +10,7 @@ from langchain_core.runnables import RunnablePassthrough, RunnableWithMessageHis
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from file_history_store import get_history
+from operator import itemgetter
 
 class RagService:
     def __init__(self):
@@ -36,37 +37,40 @@ class RagService:
         self.chain=self.__get_chain()
 
     def __get_chain(self):
-        retriever=self.vector_store.get_retriever()
+        retriever = self.vector_store.get_retriever()
 
-        def format_document(docs:list[Document]):
-            if docs is None:
+        # ==========================================
+        # 1. 定义“问题改写”层的 Prompt
+        # ==========================================
+        condense_question_prompt = ChatPromptTemplate.from_messages([
+            ("system", config.condense_question_system_template),
+            MessagesPlaceholder("history"),
+            ("user", "{input}")
+        ])
+        condense_question_chain = condense_question_prompt | self.chat_model | StrOutputParser()
+        def format_document(docs: list[Document]):
+            if not docs:
                 return "无相关数据"
-            format_str=""
+            format_str = ""
             for doc in docs:
-                format_str+= f"文档片段: {doc.page_content}\n文档元数据: {doc.metadata}\n\n"
+                format_str += f"文档片段: {doc.page_content}\n文档元数据: {doc.metadata}\n\n"
             return format_str
-        def format_for_retriever(value):
-            return value["input"]
 
-        def format_for_prompt_template(value):
-            new_value={}
-            new_value["input"]=value["input"]["input"]
-            new_value["history"]=value["input"]["history"]
-            new_value["context"]=value["context"]
-            return new_value
-
-        chain =(
-            {
-                "input":RunnablePassthrough(),
-                "context": RunnableLambda(format_for_retriever) | retriever | format_document
-            } | RunnableLambda(format_for_prompt_template) | self.prompt_template | self.chat_model | StrOutputParser()
+        chain = (
+                RunnablePassthrough.assign(
+                    standalone_question=condense_question_chain
+                )
+                | RunnablePassthrough.assign(
+            context=itemgetter("standalone_question") | RunnableLambda(retriever.invoke) | format_document
         )
-
-        conversation_chain=RunnableWithMessageHistory(
+                | self.prompt_template
+                | self.chat_model
+                | StrOutputParser()
+        )
+        conversation_chain = RunnableWithMessageHistory(
             chain,
             get_history,
             input_messages_key="input",
             history_messages_key="history"
         )
-
         return conversation_chain
