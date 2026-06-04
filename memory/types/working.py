@@ -1,4 +1,4 @@
-﻿﻿# -*- coding: utf-8 -*-
+﻿
 """
 工作记忆（Working Memory）
 纯内存存储 + TTL 自动清理 + TF-IDF 混合检索
