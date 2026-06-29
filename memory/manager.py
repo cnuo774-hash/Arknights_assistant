@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 记忆管理器（MemoryManager）
 统一协调调度四种记忆类型，提供 add/search/forget/consolidate 操作

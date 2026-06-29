@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 情景记忆（Episodic Memory）
 SQLite + Qdrant 混合存储
@@ -22,12 +22,14 @@ class EpisodicMemory(BaseMemory):
             db_path=config.episodic_db_path,
             table_name="episodic_memories"
         )
-        self._qdrant = QdrantStore(
-            url=config.qdrant_url,
-            api_key=config.qdrant_api_key,
-            collection_name=f"{config.qdrant_collection_prefix}_episodic",
-            vector_size=config.qdrant_vector_size
-        )
+        self._qdrant = None
+        if QdrantStore and config.qdrant_url:
+            self._qdrant = QdrantStore(
+                url=config.qdrant_url,
+                api_key=config.qdrant_api_key,
+                collection_name=f"{config.qdrant_collection_prefix}_episodic",
+                vector_size=config.qdrant_vector_size
+            )
         self._embedding = EmbeddingService(
             provider=config.embedding_provider,
             vector_size=config.qdrant_vector_size
@@ -36,6 +38,8 @@ class EpisodicMemory(BaseMemory):
     def add(self, item: MemoryItem) -> str:
         item.memory_type = MemoryType.EPISODIC
         self._doc_store.insert(item.to_dict())
+        if not self._qdrant:
+            return item.id
         vec = self._embedding.embed(item.content)
         self._qdrant.upsert(
             point_id=item.id,
@@ -51,10 +55,26 @@ class EpisodicMemory(BaseMemory):
 
     def search(self, query: str, limit: int = 5, min_importance: float = 0.1,
                session_id: Optional[str] = None) -> list[MemorySearchResult]:
-        query_vec = self._embedding.embed(query)
         filter_cond = {}
         if session_id:
             filter_cond["session_id"] = session_id
+        if not self._qdrant:
+            rows = self._doc_store.query(
+                session_id=session_id,
+                memory_type="episodic",
+                min_importance=min_importance,
+                order_by="timestamp DESC",
+                limit=limit,
+            )
+            return [
+                MemorySearchResult(
+                    item=MemoryItem.from_dict(row),
+                    score=self._calculate_recency_score(row.get("timestamp", "")),
+                )
+                for row in rows
+            ]
+
+        query_vec = self._embedding.embed(query)
         qdrant_results = self._qdrant.search(
             query_vector=query_vec,
             limit=limit * 2,
@@ -98,7 +118,8 @@ class EpisodicMemory(BaseMemory):
             )
             ids = [d["id"] for d in to_delete if d["importance"] < threshold]
             if ids:
-                self._qdrant.delete(ids)
+                if self._qdrant:
+                    self._qdrant.delete(ids)
                 removed = self._doc_store.delete_by_ids(ids)
         elif strategy == "time" and older_than_hours:
             to_delete = self._doc_store.query_older_than(
@@ -106,7 +127,8 @@ class EpisodicMemory(BaseMemory):
             )
             ids = [d["id"] for d in to_delete]
             if ids:
-                self._qdrant.delete(ids)
+                if self._qdrant:
+                    self._qdrant.delete(ids)
                 removed = self._doc_store.delete_by_ids(ids)
         elif strategy == "capacity":
             total = self._doc_store.count(memory_type="episodic")
@@ -118,7 +140,8 @@ class EpisodicMemory(BaseMemory):
                 )
                 ids = [d["id"] for d in lowest]
                 if ids:
-                    self._qdrant.delete(ids)
+                    if self._qdrant:
+                        self._qdrant.delete(ids)
                     removed = self._doc_store.delete_by_ids(ids)
         return removed
 
@@ -127,4 +150,5 @@ class EpisodicMemory(BaseMemory):
 
     def clear(self) -> None:
         self._doc_store.clear(memory_type="episodic")
-        self._qdrant.clear()
+        if self._qdrant:
+            self._qdrant.clear()

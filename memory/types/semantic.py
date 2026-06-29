@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 语义记忆（Semantic Memory）
 Neo4j 图数据库 + Qdrant 向量数据库 混合架构
@@ -17,6 +17,10 @@ class SemanticMemory(BaseMemory):
 
     def __init__(self, config: MemoryConfig):
         super().__init__(config)
+        if not QdrantStore:
+            raise RuntimeError("qdrant-client is required for semantic memory")
+        if not Neo4jStore:
+            raise RuntimeError("neo4j is required for semantic memory")
         self._qdrant = QdrantStore(
             url=config.qdrant_url,
             api_key=config.qdrant_api_key,

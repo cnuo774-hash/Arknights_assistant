@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 聊天历史存储（桥接层）
 保持与 LangChain RunnableWithMessageHistory 的兼容接口，
@@ -75,9 +75,19 @@ class FileChatMessageHistory(BaseChatMessageHistory):
 
     def clear(self) -> None:
         try:
+            rows = self._doc_store.query(
+                session_id=self.session_id,
+                memory_type="episodic",
+                order_by="timestamp ASC",
+                limit=10000,
+            )
+            self._doc_store.delete_by_ids([row["id"] for row in rows])
+        except Exception:
+            pass
+        try:
             self._tool.forget(
                 strategy="time",
-                older_than_hours=0,
+                older_than_hours=1,
                 memory_type=MemoryType.WORKING,
             )
         except Exception:

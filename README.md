@@ -1,221 +1,145 @@
-﻿# 明日方舟攻略助手 (Arknights Assistant)
+# 明日方舟攻略助手
 
-一个基于 RAG（Retrieval-Augmented Generation）+ 多类型记忆系统的智能问答系统，专为《明日方舟》玩家提供准确、专业的游戏攻略和知识查询服务。
+基于 RAG、混合检索和多类型记忆系统的本地 Web 问答应用，用于查询《明日方舟》干员养成、关卡打法、机制说明和知识库资料。
 
-## 功能特性
+## 功能
 
-- **智能问答**：基于大语言模型的智能对话，提供准确的游戏攻略
-- **知识库管理**：支持自定义知识库的上传和更新（TXT 格式）
-- **混合检索**：语义相似度 + BM25 关键词检索，融合排序后返回最优结果
-- **语义文本分割**：基于句子边界和语义相似度的智能文本分块
-- **多类型记忆系统**：工作记忆、情景记忆、语义记忆、感知记忆四层架构，支持记忆的添加/检索/遗忘/固化
-- **对话历史**：基于记忆系统持久化对话上下文，提供更连贯的交互体验
-- **Web 界面**：基于 Streamlit 的友好用户界面
-- **MD5 去重**：自动检测重复上传，避免知识库冗余
+- 流式问答：FastAPI SSE 实时返回模型输出。
+- 混合检索：Chroma 语义检索 + BM25 关键词检索加权融合。
+- 知识库上传：支持 UTF-8 TXT 文件上传、MD5 去重、语义分块和向量化入库。
+- 多轮对话：通过记忆系统保存上下文，支持连续追问。
+- 单一前端：`static/index.html` 是无构建静态页面，不再保留 Streamlit 方案。
 
 ## 技术栈
 
-### 核心框架
-
-- **LangChain** — LLM 应用开发框架
-- **Streamlit** — Web 界面构建
-- **ChromaDB** — 向量数据库（主知识库）
-
-### AI 模型
-
-- **通义千问 (Qwen3-Max)** — 对话生成模型
-- **DashScope Embeddings (text-embedding-v4)** — 文本嵌入模型
-
-### 记忆系统
-
-记忆系统采用四层架构设计，通过 `memory/MemoryTool` 统一对外接口：
-
-| 类型 | 说明 | 存储后端 |
-|------|------|----------|
-| 工作记忆 (Working) | 短期记忆，TTL 自动过期 | 内存 |
-| 情景记忆 (Episodic) | 长期对话记录，持久化存储 | SQLite |
-| 语义记忆 (Semantic) | 知识图谱关系，可选启用 | Neo4j |
-| 感知记忆 (Perceptual) | 向量化记忆，可选启用 | Qdrant |
-
-四大操作：**add**（添加）、**search**（检索）、**forget**（遗忘）、**consolidate**（固化）
-
-### 检索增强
-
-- **语义检索**：基于 ChromaDB 向量相似度搜索，支持相似度阈值过滤
-- **关键词检索**：基于 BM25 算法 + jieba 中文分词
-- **混合检索**：语义与关键词结果归一化后加权融合（可配权重），MD5 去重后返回 top-k
-
-### 其他依赖
-
-- Python 3.13+
-- jieba — 中文分词
-- python-dotenv — 环境变量管理
-- Neo4j / Qdrant — 可选记忆后端（云服务）
+| 模块 | 技术 |
+| --- | --- |
+| 前端 | HTML + CSS + 原生 JavaScript |
+| 后端 | FastAPI + Uvicorn |
+| RAG 编排 | LangChain |
+| 对话模型 | 通义千问 `qwen3-max` |
+| 嵌入模型 | DashScope `text-embedding-v4` |
+| 向量库 | ChromaDB |
+| 关键词检索 | jieba + BM25 |
+| 记忆存储 | SQLite，Neo4j/Qdrant 可扩展 |
 
 ## 项目结构
 
-```
+```text
 Arknights_assistant/
-├── app_qa.py              # 问答系统主应用（Streamlit）
-├── app_file_upload.py     # 知识库上传应用（Streamlit）
-├── rag.py                 # RAG 服务核心逻辑
-├── knowledge_base.py      # 知识库管理服务（含语义分割器）
-├── vector_stores.py       # 向量存储封装（含 BM25 + 混合检索器）
-├── file_history_store.py  # 聊天历史存储（桥接记忆系统）
-├── config_data.py         # 项目配置文件
-├── .env                   # 环境变量配置（API Key 等）
-├── md5_txt                # MD5 去重记录文件
-├── data/                  # 知识库数据目录
-│   └── arknights_real_kb.txt
-├── chroma_db/             # ChromaDB 向量数据库持久化目录
-├── memory_db/             # 记忆系统持久化目录（SQLite）
-└── memory/                # 记忆系统模块
-    ├── __init__.py
-    ├── base.py            # 核心数据结构：MemoryItem, MemoryConfig, BaseMemory
-    ├── manager.py         # MemoryManager：统一协调调度
-    ├── memory_tool.py     # MemoryTool：统一对外接口
-    ├── embedding.py       # 嵌入服务
-    ├── types/             # 四种记忆类型实现
-    │   ├── working.py     # 工作记忆（内存，TTL）
-    │   ├── episodic.py    # 情景记忆（SQLite）
-    │   ├── semantic.py    # 语义记忆（Neo4j，可选）
-    │   └── perceptual.py  # 感知记忆（Qdrant，可选）
-    └── storage/           # 存储后端实现
-        ├── document_store.py   # 文档存储（SQLite）
-        ├── neo4j_store.py      # Neo4j 图存储
-        └── qdrant_store.py     # Qdrant 向量存储
+├── api.py                  # FastAPI 接口与静态前端入口
+├── static/
+│   └── index.html          # Web 前端
+├── scripts/
+│   └── start_web.bat       # Windows 启动脚本
+├── run_web.bat             # 兼容入口，转发到 scripts/start_web.bat
+├── requirements_web.txt    # Web 运行依赖
+├── rag.py                  # RAG 链与问题改写
+├── knowledge_base.py       # 知识库上传、分块、入库
+├── vector_stores.py        # Chroma + BM25 混合检索
+├── file_history_store.py   # LangChain 历史记录适配层
+├── config_data.py          # 模型、Prompt、检索参数
+├── memory/                 # 记忆系统模块
+├── data/                   # 原始知识库资料
+├── chroma_db/              # Chroma 持久化目录
+├── memory_db/              # SQLite 记忆库
+├── md5_txt                 # 上传去重记录
+└── .gitignore              # 忽略密钥、缓存和运行数据
 ```
 
-## 快速开始
+## 环境要求
 
-### 环境要求
+- Python 3.11+
+- 可用的 DashScope API Key
 
-- Python 3.13+
-- 有效的 DashScope API Key
-
-### 安装依赖
+## 安装
 
 ```bash
-pip install langchain langchain-chroma langchain-community streamlit \
-            jieba python-dotenv dashscope
-# 可选：记忆系统扩展存储
-pip install neo4j qdrant-client
+pip install -r requirements_web.txt
 ```
 
-### 配置
+创建或编辑 `.env`：
 
-1. 编辑 `.env` 文件，填入你的 `DASHSCOPE_API_KEY`
-2. 可选：配置 Qdrant 和 Neo4j 云服务地址（用于语义记忆和感知记忆）
-3. `config_data.py` 中可调整检索参数、模型参数、Prompt 模板等
+```env
+DASHSCOPE_API_KEY=your-api-key-here
+```
 
-### 启动
+## 启动
+
+Windows 可以双击 `run_web.bat`，也可以运行正式脚本：
+
+```bat
+scripts\start_web.bat
+```
+
+手动启动：
 
 ```bash
-# 启动问答系统
-streamlit run app_qa.py
-
-# 启动知识库上传界面
-streamlit run app_file_upload.py
+uvicorn api:app --host 0.0.0.0 --port 8090 --reload
 ```
 
-访问浏览器显示的本地地址（通常是 `http://localhost:8501`）即可使用。
+浏览器打开：
 
-## 使用说明
-
-### 问答系统 (app_qa.py)
-
-1. 启动应用后，在聊天框中输入你的问题
-2. 系统自动进行问题改写（处理指代消解），然后执行混合检索
-3. 结合检索内容和对话历史，生成准确回答
-4. 支持连续对话，系统会通过记忆系统持久化上下文
-
-### 知识库更新 (app_file_upload.py)
-
-1. 准备 TXT 格式的知识库文件
-2. 通过文件上传页面上传文件
-3. 系统自动进行语义文本分割（大文本）并向量化存储
-4. 使用 MD5 校验避免重复上传
-
-## 配置说明
-
-在 `config_data.py` 中可调整以下参数：
-
-### 向量数据库配置
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `collection_name` | Chroma 集合名称 | `rag` |
-| `persist_directory` | 向量数据库持久化路径 | `./chroma_db` |
-
-### 文本分割配置
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `chunk_size` | 文本块大小 | `1000` |
-| `chunk_overlap` | 文本块重叠长度 | `100` |
-| `max_split_len` | 触发语义分割的最小文本长度 | `200` |
-
-### 检索配置
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `similarity_threshold` | 语义相似度阈值 | `5` |
-| `top_k_semantic` | 语义检索返回文档数 | `3` |
-| `top_k_keyword` | 关键词检索返回文档数 | `3` |
-| `top_k_final` | 混合检索最终返回文档数 | `5` |
-| `semantic_weight` | 语义相似度权重 | `0.6` |
-| `keyword_weight` | 关键词权重 | `0.4` |
-
-### 模型配置
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `embeddings_model_name` | 嵌入模型名称 | `text-embedding-v4` |
-| `chat_model_name` | 对话模型名称 | `qwen3-max` |
-
-### Prompt 模板
-
-- `system_prompt` — 系统提示词
-- `user_prompt` — 用户提示词
-- `condense_question_system_template` — 问题改写提示词（处理指代消解）
-
-## 知识库格式建议
-
-知识库文件建议使用清晰的文本格式，例如：
-
-```
-【干员名称】XXX 【职业】XXX 【技能介绍】...
-【关卡攻略】XXX 【推荐阵容】...
-【游戏术语】XXX 【含义解释】...
+```text
+http://localhost:8090
 ```
 
-## 开发说明
+## 使用
 
-### 核心类说明
+1. 在聊天输入框提问，例如“山推荐专精哪个技能？”。
+2. 需要更新资料时，在右侧知识库面板上传 `.txt` 文件。
+3. 上传成功后，下一次提问会自动重建 RAG 服务并使用新检索索引。
+4. “清除当前对话”会清理当前 session 的持久化历史记录。
 
-| 类名 | 说明 |
-|------|------|
-| `RagService` | RAG 服务主类，构建检索增强生成链（含问题改写层） |
-| `KnowledgeBaseService` | 知识库管理服务，处理文本上传和向量化 |
-| `VectorStoreService` | 向量存储服务封装，管理 ChromaDB + BM25 索引 |
-| `BM25Retriever` | BM25 关键词检索器，基于 jieba 中文分词 |
-| `HybridRetriever` | 混合检索器，融合语义相似度和关键词匹配 |
-| `SemanticTextSplitter` | 语义文本分割器，支持智能重叠 |
-| `MemoryTool` | 记忆系统统一接口（add/search/forget/consolidate） |
-| `MemoryManager` | 记忆管理器，协调四种记忆类型的调度 |
-| `FileChatMessageHistory` | 聊天历史管理，桥接 LangChain 与记忆系统 |
+## API
 
-### 扩展方向
+| 路径 | 方法 | 说明 |
+| --- | --- | --- |
+| `/` | GET | 返回前端页面 |
+| `/api/chat` | POST | SSE 流式问答 |
+| `/api/knowledge/upload` | POST | 上传 TXT 知识文件 |
+| `/api/history/{session_id}` | GET | 获取会话历史 |
+| `/api/history/{session_id}` | DELETE | 清除会话历史 |
 
-- 支持更多文件格式（PDF、Word 等）
-- 添加图片识别功能
-- 集成更多游戏数据源
-- 优化检索算法和排序策略
+聊天请求示例：
+
+```json
+{
+  "prompt": "山推荐专精哪个技能？",
+  "session_id": "user_001"
+}
+```
+
+## 配置
+
+主要参数在 `config_data.py` 中调整：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `chat_model_name` | `qwen3-max` | 对话模型 |
+| `embeddings_model_name` | `text-embedding-v4` | 嵌入模型 |
+| `chunk_size` | `1000` | 分块大小 |
+| `chunk_overlap` | `100` | 分块重叠 |
+| `top_k_semantic` | `3` | 语义检索返回数 |
+| `top_k_keyword` | `3` | 关键词检索返回数 |
+| `top_k_final` | `5` | 最终上下文数量 |
+| `semantic_weight` | `0.6` | 语义检索权重 |
+| `keyword_weight` | `0.4` | 关键词检索权重 |
+
+## 知识库文本建议
+
+```text
+【干员】山
+【定位】近卫 / 单守一路
+【技能】二技能适合常驻输出与自回复，三技能偏爆发控制。
+
+【关卡】LS-6
+【推荐】先锋回费，群攻清杂，单体术师处理高防单位。
+```
 
 ## 注意事项
 
-1. **API 费用**：使用 DashScope API 会产生费用，请注意控制用量
-2. **数据安全**：不要将 `.env` 文件提交到公开仓库
-3. **知识库质量**：回答质量依赖于知识库内容的准确性和完整性
-4. **首次启动**：首次使用时需要加载向量数据库，可能需要一些时间
-5. **记忆扩展**：语义记忆和感知记忆为可选项，需配置 Neo4j/Qdrant 云服务后才启用
+- DashScope 调用会产生费用，请控制调用量。
+- 回答质量取决于知识库覆盖范围和文本质量。
+- 首次启动或知识库更新后，RAG 服务初始化需要等待向量库和 BM25 索引加载。
+- Neo4j 和外部 Qdrant 属于扩展能力，未配置时核心 Web 问答仍可运行。

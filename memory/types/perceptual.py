@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 感知记忆（Perceptual Memory）
 多模态支持：文本、图像、音频、视频
@@ -22,6 +22,8 @@ class PerceptualMemory(BaseMemory):
             db_path=config.perceptual_db_path,
             table_name="perceptual_memories"
         )
+        if not QdrantStore:
+            raise RuntimeError("qdrant-client is required for perceptual memory")
         self._qdrant_stores: dict[Modality, QdrantStore] = {}
         for modality in [Modality.TEXT, Modality.IMAGE, Modality.AUDIO, Modality.VIDEO]:
             self._qdrant_stores[modality] = QdrantStore(

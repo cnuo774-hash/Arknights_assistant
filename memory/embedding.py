@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 统一嵌入服务
 支持 DashScope（阿里云）、本地 TF-IDF 回退

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 记忆系统基础模块
 定义核心数据结构：MemoryItem, MemoryConfig, BaseMemory
